@@ -39,6 +39,12 @@ Item {
         if (!pollProc.running) pollProc.running = true
     }
 
+    // Refresh plus a repaint, for when the board and the theme drifted apart.
+    function resync() {
+        refresh()
+        if (themeLighting) repaintTimer.restart()
+    }
+
     function run(args) {
         pending.push(args)
         pump()

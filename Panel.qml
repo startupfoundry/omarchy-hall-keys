@@ -241,80 +241,75 @@ Panel {
                         }
                     }
 
+                    // Lighting as one more choice in the same block: every key in the
+                    // theme color, with the color itself shown inside the option.
+                    BorderSurface {
+                        id: themeOption
+                        width: parent.width
+                        radius: Style.cornerRadius
+                        readonly property bool on: root.themeLighting
+                        readonly property bool hot: themeMouse.containsMouse
+                        readonly property color textColor: on ? Style.selectedStateColor(root.foreground, Color.accent) : root.foreground
+                        readonly property var hoverSpec: Border.controlSpec("hover-cursor", root.foreground, Color.accent)
+                        readonly property var selectedSpec: Border.controlHasWidth("selected")
+                            ? Border.controlSpec("selected", root.foreground, Color.accent)
+                            : Border.controlSpec("normal", root.foreground, Color.accent)
+                        readonly property var normalSpec: Border.controlSpec("normal", root.foreground, Color.accent)
+                        readonly property real reservedTop: Math.max(Border.top(hoverSpec), Border.top(selectedSpec), Border.top(normalSpec))
+                        readonly property real reservedBottom: Math.max(Border.bottom(hoverSpec), Border.bottom(selectedSpec), Border.bottom(normalSpec))
+                        implicitHeight: themeRow.implicitHeight + Style.spacing.controlPaddingY * 2 + reservedTop + reservedBottom
+                        borderSpec: hot ? hoverSpec : (on ? selectedSpec : normalSpec)
+                        color: themeMouse.pressed ? Style.pressedFillFor(root.foreground, Color.accent)
+                            : hot ? Style.hoverFillFor(root.foreground, Color.accent)
+                            : on ? Style.selectedFillFor(root.foreground, Color.accent)
+                            : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+
+                        Row {
+                            id: themeRow
+                            anchors.centerIn: parent
+                            spacing: Style.spacing.controlGap
+
+                            Rectangle {
+                                width: Style.font.body + Style.space(2)
+                                height: width
+                                radius: Math.max(2, Style.cornerRadius / 2)
+                                color: Model.isHexColor(root.themeColor) ? root.themeColor : "transparent"
+                                border.width: 1
+                                border.color: themeOption.textColor
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                textFormat: Text.PlainText
+                                text: "Omarchy Theme"
+                                color: themeOption.textColor
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.body
+                                font.bold: themeOption.on
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        MouseArea {
+                            id: themeMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setThemeLighting(!root.themeLighting)
+                        }
+                    }
+
                     Text {
                         width: parent.width
                         text: root.renaming
                             ? "Enter saves and moves on, Esc cancels. Empty means the default name."
-                            : "Press 1-4 or scroll the bar icon to switch. The pencil renames."
+                            : "1-4 or scroll to switch, pencil to rename. Omarchy Theme lights every key in the theme color."
                         color: root.foreground
                         opacity: 0.6
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.caption
                         wrapMode: Text.WordWrap
-                    }
-                }
-
-                // Lighting
-                Column {
-                    width: parent.width
-                    spacing: Style.space(8)
-                    visible: root.connected
-
-                    PanelSectionHeader {
-                        width: parent.width
-                        text: "Lighting"
-                        foreground: root.foreground
-                        fontFamily: root.fontFamily
-                    }
-
-                    Toggle {
-                        width: parent.width
-                        label: "Wear the theme"
-                        description: (root.themeColor !== ""
-                            ? "Every key in " + root.themeColor + ", following theme changes."
-                            : "Every key in the theme's keyboard color.")
-                            + " A profile switch shows its own lighting briefly."
-                        checked: root.themeLighting
-                        foreground: root.foreground
-                        fontFamily: root.fontFamily
-                        onClicked: root.setThemeLighting(!root.themeLighting)
-                    }
-
-                    Row {
-                        spacing: Style.space(8)
-
-                        Rectangle {
-                            width: reapplyButton.height
-                            height: reapplyButton.height
-                            radius: Style.cornerRadius
-                            color: Model.isHexColor(root.themeColor) ? root.themeColor : "transparent"
-                            border.width: 1
-                            border.color: root.foreground
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        Button {
-                            id: reapplyButton
-                            text: "Re-apply"
-                            tooltipText: "Send the theme color to the keyboard again"
-                            enabled: root.themeLighting
-                            foreground: root.foreground
-                            fontFamily: root.fontFamily
-                            bordered: true
-                            onClicked: if (root.keys) root.keys.paintTheme()
-                        }
-
-                        Button {
-                            text: "Onboard lighting"
-                            tooltipText: "Hand lighting back to the keyboard's own profile"
-                            foreground: root.foreground
-                            fontFamily: root.fontFamily
-                            bordered: true
-                            onClicked: {
-                                root.setThemeLighting(false)
-                                if (root.keys) root.keys.resetLighting()
-                            }
-                        }
                     }
                 }
 
@@ -386,10 +381,11 @@ Panel {
 
                     Button {
                         text: "Refresh"
+                        tooltipText: "Re-read the keyboard and re-apply the theme color if it is on"
                         foreground: root.foreground
                         fontFamily: root.fontFamily
                         bordered: true
-                        onClicked: if (root.keys) root.keys.refresh()
+                        onClicked: if (root.keys) root.keys.resync()
                     }
                 }
 
