@@ -275,33 +275,33 @@ Panel {
                         }
                     }
 
-                    // Lighting as one more choice in the same block: every key in the
-                    // theme color, with the color itself shown inside the option.
+                    // Lighting lives in the same block but is a setting, not a fifth
+                    // profile: a switch shows its state, the swatch shows the color.
                     BorderSurface {
                         id: themeOption
                         width: parent.width
                         radius: Style.cornerRadius
                         readonly property bool on: root.themeLighting
                         readonly property bool hot: themeMouse.containsMouse
-                        readonly property color textColor: on ? Style.selectedStateColor(root.foreground, Color.accent) : root.foreground
                         readonly property var hoverSpec: Border.controlSpec("hover-cursor", root.foreground, Color.accent)
-                        readonly property var selectedSpec: Border.controlHasWidth("selected")
-                            ? Border.controlSpec("selected", root.foreground, Color.accent)
-                            : Border.controlSpec("normal", root.foreground, Color.accent)
                         readonly property var normalSpec: Border.controlSpec("normal", root.foreground, Color.accent)
-                        readonly property real reservedTop: Math.max(Border.top(hoverSpec), Border.top(selectedSpec), Border.top(normalSpec))
-                        readonly property real reservedBottom: Math.max(Border.bottom(hoverSpec), Border.bottom(selectedSpec), Border.bottom(normalSpec))
-                        implicitHeight: themeRow.implicitHeight + Style.spacing.controlPaddingY * 2 + reservedTop + reservedBottom
-                        borderSpec: hot ? hoverSpec : (on ? selectedSpec : normalSpec)
+                        readonly property real reservedTop: Math.max(Border.top(hoverSpec), Border.top(normalSpec))
+                        readonly property real reservedBottom: Math.max(Border.bottom(hoverSpec), Border.bottom(normalSpec))
+                        readonly property real reservedLeft: Math.max(Border.left(hoverSpec), Border.left(normalSpec))
+                        readonly property real reservedRight: Math.max(Border.right(hoverSpec), Border.right(normalSpec))
+                        implicitHeight: Math.max(themeRow.implicitHeight, themeSwitch.implicitHeight)
+                            + Style.spacing.controlPaddingY * 2 + reservedTop + reservedBottom
+                        borderSpec: hot ? hoverSpec : normalSpec
                         color: themeMouse.pressed ? Style.pressedFillFor(root.foreground, Color.accent)
                             : hot ? Style.hoverFillFor(root.foreground, Color.accent)
-                            : on ? Style.selectedFillFor(root.foreground, Color.accent)
                             : "transparent"
                         Behavior on color { ColorAnimation { duration: 120 } }
 
                         Row {
                             id: themeRow
-                            anchors.centerIn: parent
+                            anchors.left: parent.left
+                            anchors.leftMargin: themeOption.reservedLeft + Style.spacing.controlPaddingX
+                            anchors.verticalCenter: parent.verticalCenter
                             spacing: Style.spacing.controlGap
 
                             Rectangle {
@@ -309,20 +309,31 @@ Panel {
                                 height: width
                                 radius: Math.max(2, Style.cornerRadius / 2)
                                 color: Model.isHexColor(root.themeColor) ? root.themeColor : "transparent"
+                                opacity: themeOption.on ? 1.0 : 0.45
                                 border.width: 1
-                                border.color: themeOption.textColor
+                                border.color: root.foreground
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
                             Text {
                                 textFormat: Text.PlainText
                                 text: "Omarchy Theme"
-                                color: themeOption.textColor
+                                color: root.foreground
                                 font.family: root.fontFamily
                                 font.pixelSize: Style.font.body
-                                font.bold: themeOption.on
                                 anchors.verticalCenter: parent.verticalCenter
                             }
+                        }
+
+                        ToggleSwitch {
+                            id: themeSwitch
+                            anchors.right: parent.right
+                            anchors.rightMargin: themeOption.reservedRight + Style.spacing.controlPaddingX
+                            anchors.verticalCenter: parent.verticalCenter
+                            checked: themeOption.on
+                            hasCursor: themeOption.hot
+                            foreground: root.foreground
+                            onToggled: root.setThemeLighting(!root.themeLighting)
                         }
 
                         MouseArea {
