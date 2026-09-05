@@ -108,19 +108,6 @@ function profileOptions(settings, count) {
   return options
 }
 
-// Short label for the bar: a custom name if there is one, else P1..P4.
-function barProfileText(settings, index) {
-  if (index < 0) return ""
-  var name = profileName(settings, index)
-  return name !== "" ? name.slice(0, 12) : "P" + (index + 1)
-}
-
-function barText(keys, settings, showLabel) {
-  if (!keys || !keys.connected || !showLabel) return KEYBOARD_GLYPH
-  var label = barProfileText(settings, keys.profileIndex)
-  return label !== "" ? KEYBOARD_GLYPH + " " + label : KEYBOARD_GLYPH
-}
-
 function accessHint(access) {
   if (access === "denied") return "Your session is not allowed to open the keyboard yet."
   if (access === "unsupported") return "This keyboard uses a newer protocol Hall Keys does not speak yet."

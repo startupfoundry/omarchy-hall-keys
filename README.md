@@ -5,8 +5,8 @@ keyboards, right in the [Omarchy](https://omarchy.org/) bar.
 
 ![Hall Keys panel](preview.png)
 
-- **Bar widget** shows a keyboard glyph and the active onboard profile. Scroll on it to
-  cycle profiles, right-click to hide the label, left-click for the panel.
+- **Bar widget** is a keyboard glyph whose tooltip names the active onboard profile. Scroll
+  on it to cycle profiles, click it for the panel.
 - **Panel** switches between the keyboard's onboard profiles (keys 1-4 work too), lets you
   name them (the pencil), shows the model and firmware, and opens Wootility as an app
   window for everything else.
@@ -62,7 +62,6 @@ Open Setup › Plugins › Hall Keys in the Omarchy menu, or edit the widget ent
 
 | Setting            | Default | What it does                                                    |
 |--------------------|---------|-----------------------------------------------------------------|
-| `showProfileLabel` | `true`  | Show the active profile next to the icon on the bar.            |
 | `themeLighting`    | `false` | The Omarchy Theme option: paint the keyboard in the theme color and follow theme changes. |
 | `pollInterval`     | `20`    | Seconds between profile checks.                                 |
 | `profile1Name` … `profile4Name` | empty | Labels for the onboard profiles, also editable from the panel's pencil button. The keyboard does not store names (Wootility keeps its own in the browser), so these live in Omarchy. |

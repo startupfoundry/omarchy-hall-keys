@@ -19,7 +19,6 @@
     "defaultSection": "right",
     "defaults": {
       "pollInterval": 20,
-      "showProfileLabel": true,
       "themeLighting": false,
       "profile1Name": "",
       "profile2Name": "",
@@ -27,13 +26,6 @@
       "profile4Name": ""
     },
     "schema": [
-      {
-        "key": "showProfileLabel",
-        "type": "boolean",
-        "label": "Show profile label",
-        "description": "Show the active profile next to the keyboard icon on the bar.",
-        "defaultValue": true
-      },
       {
         "key": "themeLighting",
         "type": "boolean",

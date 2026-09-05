@@ -10,7 +10,6 @@ BarWidget {
 
     readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
     readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
-    readonly property bool showProfileLabel: setting("showProfileLabel", true) === true
 
     // Persist one setting on this widget's shell.json entry.
     function updateSetting(key, value) {
@@ -82,12 +81,10 @@ BarWidget {
         active: false
         useActiveColor: false
         dimmed: !keys.connected
-        slotSize: Style.bar.iconSlot * (root.showProfileLabel && keys.connected ? 2.0 : 1.0)
         tooltipText: Model.barTooltip(keys, root.settings)
-        text: Model.barText(keys, root.settings, root.showProfileLabel)
+        text: Model.KEYBOARD_GLYPH
         onPressed: function(buttonCode) {
             if (buttonCode === Qt.LeftButton) root.toggle()
-            else if (buttonCode === Qt.RightButton) root.updateSetting("showProfileLabel", !root.showProfileLabel)
         }
         onWheelMoved: function(delta) {
             keys.cycleProfile(delta > 0 ? -1 : 1)
