@@ -132,18 +132,32 @@ Panel {
                         fontFamily: root.fontFamily
                     }
 
-                    ButtonGroup {
+                    Grid {
+                        id: profileGrid
                         width: parent.width
-                        options: Model.profileOptions(root.widgetSettings, root.profileCount)
-                        value: String(root.profileIndex)
-                        foreground: root.foreground
-                        fontFamily: root.fontFamily
-                        onChanged: function(v) { if (root.keys) root.keys.setProfile(Number(v)) }
+                        columns: 2
+                        columnSpacing: Style.space(8)
+                        rowSpacing: Style.space(8)
+                        readonly property real cellWidth: (width - columnSpacing) / 2
+
+                        Repeater {
+                            model: root.profileCount
+                            delegate: Button {
+                                required property int index
+                                width: profileGrid.cellWidth
+                                text: Model.profileLabel(root.widgetSettings, index)
+                                selected: index === root.profileIndex
+                                bordered: true
+                                foreground: root.foreground
+                                fontFamily: root.fontFamily
+                                onClicked: if (root.keys) root.keys.setProfile(index)
+                            }
+                        }
                     }
 
                     Text {
                         width: parent.width
-                        text: "Keys 1-4 switch, scrolling the bar icon cycles. Name profiles under Setup › Plugins › Hall Keys."
+                        text: "Press 1-4 or scroll the bar icon to switch. Name profiles in Setup › Plugins."
                         color: root.foreground
                         opacity: 0.6
                         font.family: root.fontFamily
@@ -181,8 +195,8 @@ Panel {
                         spacing: Style.space(8)
 
                         Rectangle {
-                            width: Style.space(28)
-                            height: Style.space(28)
+                            width: reapplyButton.height
+                            height: reapplyButton.height
                             radius: Style.cornerRadius
                             color: Model.isHexColor(root.themeColor) ? root.themeColor : "transparent"
                             border.width: 1
@@ -191,6 +205,7 @@ Panel {
                         }
 
                         Button {
+                            id: reapplyButton
                             text: "Re-apply"
                             tooltipText: "Send the theme color to the keyboard again"
                             enabled: root.themeLighting
@@ -273,6 +288,7 @@ Panel {
                         tooltipText: "Full configuration in the browser (wootility.io)"
                         foreground: root.foreground
                         fontFamily: root.fontFamily
+                        bordered: true
                         onClicked: if (root.keys) root.keys.openWootility()
                     }
 
@@ -280,6 +296,7 @@ Panel {
                         text: "Refresh"
                         foreground: root.foreground
                         fontFamily: root.fontFamily
+                        bordered: true
                         onClicked: if (root.keys) root.keys.refresh()
                     }
                 }
