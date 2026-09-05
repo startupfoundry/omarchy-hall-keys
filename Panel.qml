@@ -22,7 +22,6 @@ Panel {
     readonly property string access: keys ? keys.access : "absent"
     readonly property string model: keys ? keys.model : ""
     readonly property string firmware: keys ? keys.firmware : ""
-    readonly property string serial: keys ? keys.serial : ""
     readonly property int profileIndex: keys ? keys.profileIndex : -1
     readonly property int profileCount: keys ? keys.profileCount : 4
     readonly property string themeColor: keys ? keys.themeColor : ""
@@ -129,17 +128,6 @@ Panel {
                             font.pixelSize: Style.font.display
                         }
                     }
-                }
-
-                Text {
-                    width: parent.width
-                    visible: root.connected && root.serial !== ""
-                    text: "Serial " + root.serial
-                    color: root.foreground
-                    opacity: 0.6
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    elide: Text.ElideRight
                 }
 
                 // Profiles
@@ -377,7 +365,10 @@ Panel {
                         foreground: root.foreground
                         fontFamily: root.fontFamily
                         bordered: true
-                        onClicked: if (root.keys) root.keys.openWootility()
+                        onClicked: {
+                            root.close()
+                            if (root.keys) root.keys.openWootility()
+                        }
                     }
 
                     Button {

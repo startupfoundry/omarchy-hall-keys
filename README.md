@@ -8,8 +8,8 @@ keyboards, right in the [Omarchy](https://omarchy.org/) bar.
 - **Bar widget** shows a keyboard glyph and the active onboard profile. Scroll on it to
   cycle profiles, right-click to hide the label, left-click for the panel.
 - **Panel** switches between the keyboard's onboard profiles (keys 1-4 work too), lets you
-  name them (the pencil), shows the model, firmware, and serial, and opens Wootility as an
-  app window for everything else.
+  name them (the pencil), shows the model and firmware, and opens Wootility as an app
+  window for everything else.
 - **Wear the theme** paints every key in the active Omarchy theme's keyboard color and
   repaints when you switch themes. Turn it off to hand lighting back to the keyboard.
 
