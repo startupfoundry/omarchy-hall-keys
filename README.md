@@ -32,7 +32,8 @@ HID to the keyboard, and Python 3 ships with Omarchy.
 omarchy plugin add https://github.com/startupfoundry/omarchy-hall-keys.git --enable
 ```
 
-The widget appears in the bar's right section. Move it with
+The command asks for confirmation; add `--yes` to skip that in a script. The widget appears
+in the bar's right section. Move it with
 `omarchy bar move io.github.startupfoundry.hall-keys --section left`.
 
 ## Keyboard access
