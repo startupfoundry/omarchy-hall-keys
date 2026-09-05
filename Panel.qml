@@ -1,5 +1,6 @@
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -39,16 +40,27 @@ Panel {
         renaming = true
     }
 
+    // Whatever ends rename mode (check button, Enter on the last field, Esc,
+    // the panel closing) saves every field in one settings write first.
     function stopRenaming() {
+        if (renaming) commitNames()
         renaming = false
         Qt.callLater(function() { keyCatcher.forceActiveFocus() })
     }
 
-    function commitName(index, text) {
-        if (!hostWidget || typeof hostWidget.updateSetting !== "function") return
-        var clean = Model.cleanText(text, "", 24)
-        if (clean === Model.profileName(root.widgetSettings, index)) return
-        hostWidget.updateSetting("profile" + (index + 1) + "Name", clean)
+    function commitNames() {
+        var grid = nameGridLoader.item
+        if (!grid || !hostWidget || typeof hostWidget.updateSettings !== "function") return
+        var names = grid.names()
+        var changes = {}
+        var dirty = false
+        for (var i = 0; i < names.length; i++) {
+            var clean = Model.cleanText(names[i], "", 24)
+            if (clean === Model.profileName(root.widgetSettings, i)) continue
+            changes["profile" + (i + 1) + "Name"] = clean
+            dirty = true
+        }
+        if (dirty) hostWidget.updateSettings(changes)
     }
 
     function open() {
@@ -83,10 +95,23 @@ Panel {
         return Model.accessHint(access)
     }
 
-    onOpenedChanged: if (opened) {
-        if (keys) keys.refresh()
-        renaming = false
-        Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    // omarchy-shell hall-keys rename | toggle  (handy for a keybinding)
+    IpcHandler {
+        target: "hall-keys"
+        function toggle(): void { root.toggle() }
+        function rename(): void {
+            root.open()
+            Qt.callLater(function() { root.startRenaming() })
+        }
+    }
+
+    onOpenedChanged: {
+        if (opened) {
+            if (keys) keys.refresh()
+            Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+        } else if (renaming) {
+            stopRenaming()
+        }
     }
 
     KeyboardPanel {
@@ -216,17 +241,26 @@ Panel {
                                 if (first) { first.forceActiveFocus(); first.selectAll() }
                             }
 
+                            function names() {
+                                var out = []
+                                for (var i = 0; i < nameRepeater.count; i++) {
+                                    var field = nameRepeater.itemAt(i)
+                                    out.push(field ? field.text : "")
+                                }
+                                return out
+                            }
+
                             Repeater {
                                 id: nameRepeater
                                 model: root.profileCount
                                 delegate: TextField {
                                     required property int index
                                     width: nameGrid.cellWidth
-                                    text: Model.profileName(root.widgetSettings, index)
                                     placeholderText: "Profile " + (index + 1)
                                     maximumLength: 24
                                     foreground: root.foreground
-                                    onEditingFinished: root.commitName(index, text)
+                                    // Seeded once, not bound: a live binding would clobber typing.
+                                    Component.onCompleted: text = Model.profileName(root.widgetSettings, index)
                                     onAccepted: {
                                         var next = nameRepeater.itemAt(index + 1)
                                         if (next) { next.forceActiveFocus(); next.selectAll() }

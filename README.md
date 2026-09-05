@@ -99,6 +99,10 @@ Run the helper directly to see exactly what the plugin sees:
 ~/.config/omarchy/plugins/io.github.startupfoundry.hall-keys/bin/hall-keys probe
 ```
 
+`qmllint` reports `Unexpected token 'void'` on `Panel.qml`. That is the typed function
+signature Quickshell requires for IPC handlers; qmllint's parser does not know it, and the
+shell's own panels trip the same warning. The shell loads the file fine.
+
 `"access":"denied"` means the udev rule is missing. `"access":"absent"` means no Wooting
 configuration interface was found on hidraw. `"protocol"` tells you which generation the
 firmware speaks; `probe` dumps the raw replies and the interface's report layout. If the shell shows nothing, check

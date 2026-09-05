@@ -11,13 +11,19 @@ BarWidget {
     readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
     readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
 
-    // Persist one setting on this widget's shell.json entry.
-    function updateSetting(key, value) {
+    // Persist settings on this widget's shell.json entry in one write.
+    function updateSettings(changes) {
         var next = Object.assign({}, root.settings)
-        next[key] = value
+        for (var key in changes) next[key] = changes[key]
         root.settings = next
         if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
             root.bar.shell.updateEntryInline(root.moduleName, root.settings)
+    }
+
+    function updateSetting(key, value) {
+        var changes = {}
+        changes[key] = value
+        updateSettings(changes)
     }
 
     function open() {
