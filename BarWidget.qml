@@ -40,6 +40,21 @@ BarWidget {
         keys.refresh()
     }
 
+    // One active choice: a profile, or the Omarchy theme. Picking a profile
+    // hands lighting back to it; the theme is switched off first so the
+    // reset reaches the board before the profile change does.
+    function chooseProfile(index) {
+        if (!keys.connected) return
+        if (keys.themeLighting) updateSetting("themeLighting", false)
+        keys.setProfile(index)
+    }
+
+    function cycleProfile(step) {
+        if (!keys.connected || keys.profileCount < 1) return
+        var n = keys.profileCount
+        chooseProfile(((keys.profileIndex + step) % n + n) % n)
+    }
+
     // Open the panel straight into rename mode. Reachable over IPC:
     //   omarchy-shell shell call io.github.startupfoundry.hall-keys renameProfiles ""
     function renameProfiles() {
@@ -93,7 +108,7 @@ BarWidget {
             if (buttonCode === Qt.LeftButton) root.toggle()
         }
         onWheelMoved: function(delta) {
-            keys.cycleProfile(delta > 0 ? -1 : 1)
+            root.cycleProfile(delta > 0 ? -1 : 1)
         }
     }
 }

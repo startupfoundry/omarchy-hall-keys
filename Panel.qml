@@ -78,6 +78,11 @@ Panel {
         return false
     }
 
+    function chooseProfile(index) {
+        if (hostWidget && typeof hostWidget.chooseProfile === "function") hostWidget.chooseProfile(index)
+        else if (keys) keys.setProfile(index)
+    }
+
     function setThemeLighting(on) {
         if (hostWidget && typeof hostWidget.updateSetting === "function")
             hostWidget.updateSetting("themeLighting", on)
@@ -132,7 +137,7 @@ Panel {
             onTabRequested: function(direction) { root.switchPanel(direction) }
             onTextKey: function(text) {
                 var n = Number(text)
-                if (n >= 1 && n <= root.profileCount && root.keys) root.keys.setProfile(n - 1)
+                if (n >= 1 && n <= root.profileCount) root.chooseProfile(n - 1)
             }
 
             Column {
@@ -213,11 +218,11 @@ Panel {
                                 required property int index
                                 width: profileGrid.cellWidth
                                 text: Model.profileLabel(root.widgetSettings, index)
-                                selected: index === root.profileIndex
+                                selected: index === root.profileIndex && !root.themeLighting
                                 bordered: true
                                 foreground: root.foreground
                                 fontFamily: root.fontFamily
-                                onClicked: if (root.keys) root.keys.setProfile(index)
+                                onClicked: root.chooseProfile(index)
                             }
                         }
                     }
@@ -275,33 +280,33 @@ Panel {
                         }
                     }
 
-                    // Lighting lives in the same block but is a setting, not a fifth
-                    // profile: a switch shows its state, the swatch shows the color.
+                    // The fifth choice: every key in the theme color. Selected here means
+                    // no profile shows as selected above; picking a profile switches back.
                     BorderSurface {
                         id: themeOption
                         width: parent.width
                         radius: Style.cornerRadius
                         readonly property bool on: root.themeLighting
                         readonly property bool hot: themeMouse.containsMouse
+                        readonly property color textColor: on ? Style.selectedStateColor(root.foreground, Color.accent) : root.foreground
                         readonly property var hoverSpec: Border.controlSpec("hover-cursor", root.foreground, Color.accent)
+                        readonly property var selectedSpec: Border.controlHasWidth("selected")
+                            ? Border.controlSpec("selected", root.foreground, Color.accent)
+                            : Border.controlSpec("normal", root.foreground, Color.accent)
                         readonly property var normalSpec: Border.controlSpec("normal", root.foreground, Color.accent)
-                        readonly property real reservedTop: Math.max(Border.top(hoverSpec), Border.top(normalSpec))
-                        readonly property real reservedBottom: Math.max(Border.bottom(hoverSpec), Border.bottom(normalSpec))
-                        readonly property real reservedLeft: Math.max(Border.left(hoverSpec), Border.left(normalSpec))
-                        readonly property real reservedRight: Math.max(Border.right(hoverSpec), Border.right(normalSpec))
-                        implicitHeight: Math.max(themeRow.implicitHeight, themeSwitch.implicitHeight)
-                            + Style.spacing.controlPaddingY * 2 + reservedTop + reservedBottom
-                        borderSpec: hot ? hoverSpec : normalSpec
+                        readonly property real reservedTop: Math.max(Border.top(hoverSpec), Border.top(selectedSpec), Border.top(normalSpec))
+                        readonly property real reservedBottom: Math.max(Border.bottom(hoverSpec), Border.bottom(selectedSpec), Border.bottom(normalSpec))
+                        implicitHeight: themeRow.implicitHeight + Style.spacing.controlPaddingY * 2 + reservedTop + reservedBottom
+                        borderSpec: hot ? hoverSpec : (on ? selectedSpec : normalSpec)
                         color: themeMouse.pressed ? Style.pressedFillFor(root.foreground, Color.accent)
                             : hot ? Style.hoverFillFor(root.foreground, Color.accent)
+                            : on ? Style.selectedFillFor(root.foreground, Color.accent)
                             : "transparent"
                         Behavior on color { ColorAnimation { duration: 120 } }
 
                         Row {
                             id: themeRow
-                            anchors.left: parent.left
-                            anchors.leftMargin: themeOption.reservedLeft + Style.spacing.controlPaddingX
-                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.centerIn: parent
                             spacing: Style.spacing.controlGap
 
                             Rectangle {
@@ -309,31 +314,20 @@ Panel {
                                 height: width
                                 radius: Math.max(2, Style.cornerRadius / 2)
                                 color: Model.isHexColor(root.themeColor) ? root.themeColor : "transparent"
-                                opacity: themeOption.on ? 1.0 : 0.45
                                 border.width: 1
-                                border.color: root.foreground
+                                border.color: themeOption.textColor
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
                             Text {
                                 textFormat: Text.PlainText
                                 text: "Omarchy Theme"
-                                color: root.foreground
+                                color: themeOption.textColor
                                 font.family: root.fontFamily
                                 font.pixelSize: Style.font.body
+                                font.bold: themeOption.on
                                 anchors.verticalCenter: parent.verticalCenter
                             }
-                        }
-
-                        ToggleSwitch {
-                            id: themeSwitch
-                            anchors.right: parent.right
-                            anchors.rightMargin: themeOption.reservedRight + Style.spacing.controlPaddingX
-                            anchors.verticalCenter: parent.verticalCenter
-                            checked: themeOption.on
-                            hasCursor: themeOption.hot
-                            foreground: root.foreground
-                            onToggled: root.setThemeLighting(!root.themeLighting)
                         }
 
                         MouseArea {
@@ -349,7 +343,7 @@ Panel {
                         width: parent.width
                         text: root.renaming
                             ? "Enter saves and moves on, Esc cancels. Empty means the default name."
-                            : "1-4 or scroll to switch, pencil to rename. Omarchy Theme lights every key in the theme color."
+                            : "Pick a profile or the theme. 1-4 or scroll to switch, pencil to rename."
                         color: root.foreground
                         opacity: 0.6
                         font.family: root.fontFamily

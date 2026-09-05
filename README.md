@@ -10,9 +10,9 @@ keyboards, right in the [Omarchy](https://omarchy.org/) bar.
 - **Panel** switches between the keyboard's onboard profiles (keys 1-4 work too), lets you
   name them (the pencil), shows the model and firmware, and opens Wootility as an app
   window for everything else.
-- **Omarchy Theme**, the switch under the profiles, paints every key in the active theme's
-  keyboard color and repaints when you switch themes. Turn it off to hand lighting back to
-  the keyboard's own profile.
+- **Omarchy Theme**, the fifth choice under the profiles, paints every key in the active
+  theme's keyboard color and repaints when you switch themes. Picking a profile switches
+  back to that profile's own lighting.
 
 No Wootility, no daemon, no build step. The helper is a single Python 3 script that talks
 HID to the keyboard, and Python 3 ships with Omarchy.
@@ -62,7 +62,7 @@ Open Setup › Plugins › Hall Keys in the Omarchy menu, or edit the widget ent
 
 | Setting            | Default | What it does                                                    |
 |--------------------|---------|-----------------------------------------------------------------|
-| `themeLighting`    | `false` | The Omarchy Theme option: paint the keyboard in the theme color and follow theme changes. |
+| `themeLighting`    | `false` | Omarchy Theme is the active choice: paint the keyboard in the theme color and follow theme changes. |
 | `pollInterval`     | `20`    | Seconds between profile checks.                                 |
 | `profile1Name` … `profile4Name` | empty | Labels for the onboard profiles, also editable from the panel's pencil button. The keyboard does not store names (Wootility keeps its own in the browser), so these live in Omarchy. |
 
@@ -83,12 +83,13 @@ keyboard until the next Wootility update asks again.
 
 Every Omarchy theme can ship a `keyboard.rgb` file holding one hex color. Hall Keys reads it
 from the active theme (`~/.local/state/omarchy/current/theme/keyboard.rgb`) and falls back to
-the theme's accent color when a theme has none. With **Omarchy Theme** selected, the whole
-board is set to that color through the keyboard's host lighting mode and repainted after a
-theme switch. Turning it off returns control to the keyboard's own profile lighting.
-Switching profiles while it is selected shows the new profile's own lighting for a moment,
-then the theme color returns. Unplugging the keyboard restores its onboard lighting; Hall
-Keys repaints when it reconnects. **Refresh** re-reads the keyboard and re-applies the color.
+the theme's accent color when a theme has none. The panel offers one active choice: a
+profile, or **Omarchy Theme**. With the theme chosen, the whole board is set to that color
+through the keyboard's host lighting mode and repainted after a theme switch; no profile
+shows as selected, although the last profile stays active underneath for actuation and
+remaps. Picking a profile hands lighting back to it. Unplugging the keyboard restores its
+onboard lighting; Hall Keys repaints when it reconnects. **Refresh** re-reads the keyboard
+and re-applies the color.
 
 ## Troubleshooting
 

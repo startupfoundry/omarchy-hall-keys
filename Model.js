@@ -118,7 +118,8 @@ function barTooltip(keys, settings) {
   if (!keys) return "Hall Keys"
   if (!keys.connected) return "Hall Keys: " + accessHint(keys.access)
   var parts = [keys.model || "Wooting keyboard"]
-  if (keys.profileIndex >= 0) parts.push(profileLabel(settings, keys.profileIndex))
+  if (keys.themeLighting) parts.push("Omarchy Theme")
+  else if (keys.profileIndex >= 0) parts.push(profileLabel(settings, keys.profileIndex))
   return parts.join(" · ")
 }
 

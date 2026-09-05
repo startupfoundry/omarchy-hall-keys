@@ -58,24 +58,11 @@ Item {
         cmdProc.running = true
     }
 
-    // With theme lighting on, a switch would be invisible on the board: host
-    // lighting hides the profile's own colors. So hand lighting back for a
-    // moment, let the new profile show itself, then bring the theme back.
     function setProfile(index) {
         if (!connected) return
         index = Math.max(0, Math.min(profileCount - 1, Math.round(index)))
         profileIndex = index          // optimistic; the helper's reply confirms it
         run(["profile", String(index + 1)])
-        if (themeLighting) {
-            run(["reset"])
-            profileShowTimer.restart()
-        }
-    }
-
-    function cycleProfile(step) {
-        if (!connected || profileCount < 1) return
-        var n = profileCount
-        setProfile(((profileIndex + step) % n + n) % n)
     }
 
     function paintTheme() {
@@ -136,14 +123,6 @@ Item {
         onLoaded: root.themeColor = Model.normalizeColor(text(), String(root.accentColor))
         onFileChanged: reload()
         onLoadFailed: root.themeColor = Model.normalizeColor("", String(root.accentColor))
-    }
-
-    // Theme comes back after the new profile had its moment on the board.
-    Timer {
-        id: profileShowTimer
-        interval: 1500
-        repeat: false
-        onTriggered: if (root.themeLighting) root.paintTheme()
     }
 
     // Coalesce bursts (a theme switch touches several files) into one paint.
