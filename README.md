@@ -1,0 +1,114 @@
+# Hall Keys
+
+Profile switching, device info, and theme-matched lighting for Wooting Hall-effect
+keyboards, right in the [Omarchy](https://omarchy.org/) bar.
+
+![Hall Keys panel](preview.png)
+
+- **Bar widget** shows a keyboard glyph and the active onboard profile. Scroll on it to
+  cycle profiles, right-click to hide the label, left-click for the panel.
+- **Panel** switches between the keyboard's onboard profiles (keys 1-4 work too), shows the
+  model, firmware, and serial, and opens Wootility for everything else.
+- **Wear the theme** paints every key in the active Omarchy theme's keyboard color and
+  repaints when you switch themes. Turn it off to hand lighting back to the keyboard.
+
+No Wootility, no daemon, no build step. The helper is a single Python 3 script that talks
+HID to the keyboard, and Python 3 ships with Omarchy.
+
+## Requirements
+
+- Omarchy Quattro.
+- A Wooting keyboard over USB. Tested on the 80HE. Boards that use Wooting's
+  256-byte configuration interface should work: One, Two, Two LE, Two HE, 60HE, 60HE V2,
+  80HE. Boards on the newer multi-report protocol show as unsupported for now.
+- Permission to open the keyboard's `/dev/hidraw` node (see below).
+
+## Install
+
+```sh
+omarchy plugin add https://github.com/startupfoundry/omarchy-hall-keys.git --enable
+```
+
+The widget appears in the bar's right section. Move it with
+`omarchy bar move io.github.startupfoundry.hall-keys --section left`.
+
+## Keyboard access
+
+Linux keeps raw HID access to keyboards private to root. The first time you open the panel
+it will say **Keyboard access needed**. Click **Grant keyboard access**: it asks for your
+password once through polkit and installs one udev rule,
+`/etc/udev/rules.d/70-wooting-hidraw-uaccess.rules`, which is the same "Generic Wootings"
+line from Wooting's own Linux instructions:
+
+```
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="31e3", MODE:="0660", GROUP="input", TAG+="uaccess"
+```
+
+`uaccess` means only the user logged in at the seat gets access, and only while logged in.
+Nothing else on the system changes. The same rule also makes the Wootility web app work in
+Chromium-based browsers.
+
+If you would rather do it by hand, copy the file from [`extras/70-wooting-hidraw-uaccess.rules`](extras/70-wooting-hidraw-uaccess.rules)
+into `/etc/udev/rules.d/`, then run `udevadm control --reload && udevadm trigger --subsystem-match=hidraw`
+as root. No logout is needed.
+
+## Settings
+
+Open Setup › Plugins › Hall Keys in the Omarchy menu, or edit the widget entry in
+`~/.config/omarchy/shell.json`:
+
+| Setting            | Default | What it does                                                    |
+|--------------------|---------|-----------------------------------------------------------------|
+| `showProfileLabel` | `true`  | Show the active profile next to the icon on the bar.            |
+| `themeLighting`    | `false` | Paint the keyboard in the theme color and follow theme changes. |
+| `pollInterval`     | `20`    | Seconds between profile checks.                                 |
+| `profile1Name` … `profile4Name` | empty | Labels for the onboard profiles. The keyboard does not store names, so these live in Omarchy. |
+
+## Theme lighting
+
+Every Omarchy theme can ship a `keyboard.rgb` file holding one hex color. Hall Keys reads it
+from the active theme (`~/.local/state/omarchy/current/theme/keyboard.rgb`) and falls back to
+the theme's accent color when a theme has none. With **Wear the theme** on, the whole board
+is set to that color through the keyboard's host lighting mode and repainted after a theme
+switch. Turning it off, or clicking **Onboard lighting**, returns control to the keyboard's
+own profile lighting. Unplugging the keyboard also restores its onboard lighting; Hall Keys
+repaints when it reconnects.
+
+## Troubleshooting
+
+Run the helper directly to see exactly what the plugin sees:
+
+```sh
+~/.config/omarchy/plugins/io.github.startupfoundry.hall-keys/bin/hall-keys status
+~/.config/omarchy/plugins/io.github.startupfoundry.hall-keys/bin/hall-keys probe
+```
+
+`"access":"denied"` means the udev rule is missing. `"access":"absent"` means no Wooting
+configuration interface was found on hidraw. If the shell shows nothing, check
+`qs log -p "$OMARCHY_PATH/shell" --tail 100` for QML errors.
+
+## Uninstall
+
+```sh
+omarchy plugin remove io.github.startupfoundry.hall-keys --yes
+```
+
+If theme lighting was on, the keyboard keeps the last painted color until it is replugged;
+click **Onboard lighting** first, or run `bin/hall-keys reset`, if you want it back sooner.
+The udev rule is left in place because Wootility benefits from it too. Remove it with
+`sudo rm /etc/udev/rules.d/70-wooting-hidraw-uaccess.rules` if you no longer want it.
+
+## How it works
+
+The keyboard's configuration interface answers 8-byte HID feature reports with 256-byte
+replies. Hall Keys uses the commands documented by Wooting's open-source
+[wooting-rgb-sdk](https://github.com/WootingKb/wooting-rgb-sdk) (MIT) plus the profile
+commands the community mapped out of Wootility: get firmware, get serial, get and set the
+active profile, and the raw-colors report for host lighting. Nothing is written to the
+keyboard's flash; profile changes are the same "activate" calls Wootility makes.
+
+## License and trademarks
+
+MIT, see [LICENSE](LICENSE). Wooting, Lekker and Wootility are trademarks of Wooting
+Technologies. This is an independent community project, not affiliated with or endorsed by
+Wooting.

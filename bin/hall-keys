@@ -1,0 +1,415 @@
+#!/usr/bin/env python3
+# hall-keys - keyboard helper for the Hall Keys Omarchy plugin.
+#
+# Talks to a Wooting keyboard's configuration interface over /dev/hidraw using
+# only the Python standard library. Every call is one short-lived process that
+# prints a JSON status object on stdout.
+#
+#   hall-keys status            print status
+#   hall-keys profile <1-4>     activate an onboard profile
+#   hall-keys paint <#rrggbb>   light every key in one color (host lighting mode)
+#   hall-keys reset             hand lighting back to the onboard profile
+#   hall-keys probe             dump raw replies to a few read-only commands
+#
+# Protocol (from WootingKb/wooting-rgb-sdk, MIT, and community notes on Wootility):
+#   command  = 8-byte HID feature report [0x00, 0xD0, 0xDA, cmd, p0, p1, p2, p3]
+#   reply    = one 256-byte input report   [0xD0, 0xDA, cmd, flags, len, data...]
+#   lighting = 256-byte output report      [0xD0, 0xDA, 11, 126 x RGB565 little-endian]
+
+import fcntl
+import glob
+import json
+import os
+import re
+import select
+import sys
+import time
+
+VENDOR_WOOTING = 0x31E3
+VENDOR_LEGACY = 0x03EB          # first-generation Wooting One / Two
+USAGE_PAGE_CFG = 0x1337         # configuration interface, 256-byte reports
+USAGE_PAGE_CFG_V3 = 0xFF55      # newer multi-report interface (not supported yet)
+
+CMD_GET_VERSION = 1
+CMD_GET_SERIAL = 3
+CMD_RELOAD_PROFILE = 7
+CMD_GET_PROFILE_COUNT = 9
+CMD_GET_PROFILE_INDEX = 11
+CMD_GET_DEVICE_CONFIG = 19
+CMD_ACTIVATE_PROFILE = 23
+CMD_RESET_ALL = 32
+CMD_COLOR_INIT = 33
+REPORT_RAW_COLORS = 11
+
+RGB_ROWS = 6
+RGB_COLS = 21
+STAGES = "HPTEX"                # mass, PVT, DVT, EVT, prototype
+
+MODELS = {
+    (VENDOR_LEGACY, 0xFF01): "Wooting One",
+    (VENDOR_LEGACY, 0xFF02): "Wooting Two",
+    (VENDOR_WOOTING, 0x1100): "Wooting One",
+    (VENDOR_WOOTING, 0x1200): "Wooting Two",
+    (VENDOR_WOOTING, 0x1210): "Wooting Two LE",
+    (VENDOR_WOOTING, 0x1220): "Wooting Two HE",
+    (VENDOR_WOOTING, 0x1230): "Wooting Two HE (ARM)",
+    (VENDOR_WOOTING, 0x1300): "Wooting 60HE",
+    (VENDOR_WOOTING, 0x1310): "Wooting 60HE (ARM)",
+    (VENDOR_WOOTING, 0x1320): "Wooting 60HE+",
+    (VENDOR_WOOTING, 0x1340): "Wooting 60HE V2",
+    (VENDOR_WOOTING, 0x1400): "Wooting 80HE",
+    (VENDOR_WOOTING, 0x1500): "Wooting UwU",
+    (VENDOR_WOOTING, 0x1510): "Wooting UwU RGB",
+}
+
+
+class ProtocolError(Exception):
+    pass
+
+
+def model_name(vid, pid):
+    if vid == VENDOR_WOOTING:
+        pid &= ~0x3            # alternate product ids (+1, +2) share a model
+    return MODELS.get((vid, pid), "Wooting keyboard (%04x:%04x)" % (vid, pid))
+
+
+def hidioc_sfeature(length):
+    # _IOC(_IOC_READ | _IOC_WRITE, 'H', 0x06, length)
+    return (3 << 30) | (length << 16) | (0x48 << 8) | 0x06
+
+
+def parse_descriptor(raw):
+    """Return (usage pages, {input,output,feature: bytes}) from a HID report descriptor."""
+    pages = set()
+    count = size = 0
+    lengths = {"input": 0, "output": 0, "feature": 0}
+    i = 0
+    while i < len(raw):
+        prefix = raw[i]
+        i += 1
+        item_size = prefix & 0x3
+        if item_size == 3:
+            item_size = 4
+        tag = prefix & 0xFC
+        value = int.from_bytes(raw[i:i + item_size], "little") if item_size else 0
+        i += item_size
+        if tag == 0x04:
+            pages.add(value)
+        elif tag == 0x94:
+            count = value
+        elif tag == 0x74:
+            size = value
+        elif tag in (0x80, 0x90, 0xB0):
+            key = {0x80: "input", 0x90: "output", 0xB0: "feature"}[tag]
+            lengths[key] = max(lengths[key], count * size // 8)
+    return pages, lengths
+
+
+def hidraw_number(path):
+    match = re.search(r"(\d+)$", path)
+    return int(match.group(1)) if match else 0
+
+
+def discover():
+    """Find configuration interfaces of attached Wooting keyboards."""
+    found = []
+    for dev in sorted(glob.glob("/sys/class/hidraw/hidraw*"), key=hidraw_number):
+        try:
+            with open(os.path.join(dev, "device", "uevent")) as f:
+                uevent = f.read()
+        except OSError:
+            continue
+        hid_id = ""
+        for line in uevent.splitlines():
+            if line.startswith("HID_ID="):
+                hid_id = line[len("HID_ID="):]
+        parts = hid_id.split(":")
+        if len(parts) != 3:
+            continue
+        try:
+            vid, pid = int(parts[1], 16), int(parts[2], 16)
+        except ValueError:
+            continue
+        if vid not in (VENDOR_WOOTING, VENDOR_LEGACY):
+            continue
+        try:
+            with open(os.path.join(dev, "device", "report_descriptor"), "rb") as f:
+                pages, lengths = parse_descriptor(f.read())
+        except OSError:
+            continue
+        if USAGE_PAGE_CFG in pages:
+            kind = "v2"
+        elif USAGE_PAGE_CFG_V3 in pages:
+            kind = "v3"
+        else:
+            continue
+        found.append({
+            "path": "/dev/" + os.path.basename(dev),
+            "vid": vid, "pid": pid, "kind": kind, "lengths": lengths,
+        })
+    return found
+
+
+def parse_varint(data, i):
+    result = shift = 0
+    while i < len(data):
+        byte = data[i]
+        i += 1
+        result |= (byte & 0x7F) << shift
+        shift += 7
+        if not byte & 0x80:
+            break
+    return result, i
+
+
+def parse_serial_fields(data):
+    """The serial reply is a tiny protobuf message of varint fields."""
+    fields = {}
+    i = 0
+    while i < len(data):
+        tag = data[i]
+        i += 1
+        number, wire = tag >> 3, tag & 7
+        if wire == 0:
+            value, i = parse_varint(data, i)
+            fields[number] = value
+        elif wire == 1:
+            i += 8
+        elif wire == 2:
+            length, i = parse_varint(data, i)
+            i += length
+        elif wire == 5:
+            i += 4
+        else:
+            break
+    return fields
+
+
+def format_serial(fields):
+    """Same layout Wootility prints: A<supplier>B<year><week>W<product>[T<pcb>]<rev>[<minor>][S<variant>]<stage><product id>."""
+    text = "A%02XB%02d%02dW%02X" % (fields.get(1, 0), fields.get(2, 0), fields.get(3, 0), fields.get(4, 0))
+    if 10 in fields:
+        text += "T%02d" % fields[10]
+    text += str(fields.get(5, 0))
+    if 11 in fields:
+        text += "%02d" % fields[11]
+    if 9 in fields:
+        text += "S%02d" % fields[9]
+    stage = fields.get(7, 0)
+    text += STAGES[stage] if 0 <= stage < len(STAGES) else "?"
+    text += "%05d" % fields.get(6, 0)
+    return text
+
+
+class Board:
+    def __init__(self, info):
+        self.info = info
+        self.path = info["path"]
+        self.legacy = info["vid"] == VENDOR_LEGACY
+        self.response_size = 128 if self.legacy else 256
+        self.fd = os.open(self.path, os.O_RDWR | os.O_NONBLOCK)
+
+    def close(self):
+        os.close(self.fd)
+
+    def _drain(self):
+        for _ in range(64):
+            ready, _, _ = select.select([self.fd], [], [], 0.01)
+            if not ready:
+                return
+            try:
+                if not os.read(self.fd, 4096):
+                    return
+            except BlockingIOError:
+                return
+
+    def command(self, cmd, params=(0, 0, 0, 0), timeout=1.0):
+        """Send one feature command and return the data bytes of its reply."""
+        self._drain()
+        packet = bytearray(8)
+        packet[1], packet[2], packet[3] = 0xD0, 0xDA, cmd
+        for i, value in enumerate(params[:4]):
+            packet[4 + i] = value & 0xFF
+        fcntl.ioctl(self.fd, hidioc_sfeature(len(packet)), packet)
+        deadline = time.monotonic() + timeout
+        buf = b""
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([self.fd], [], [], max(0.0, deadline - time.monotonic()))
+            if not ready:
+                break
+            try:
+                chunk = os.read(self.fd, 4096)
+            except BlockingIOError:
+                continue
+            if not chunk:
+                break
+            buf += chunk
+            while len(buf) >= self.response_size:
+                report, buf = buf[:self.response_size], buf[self.response_size:]
+                if report[0] == 0xD0 and report[1] == 0xDA and report[2] == cmd:
+                    if self.legacy:
+                        return bytes(report[4:])
+                    return bytes(report[5:5 + report[4]])
+        raise ProtocolError("keyboard did not answer command %d" % cmd)
+
+    def firmware(self):
+        data = self.command(CMD_GET_VERSION)
+        return ".".join(str(b) for b in data[:3]) if len(data) >= 3 else ""
+
+    def serial(self):
+        return format_serial(parse_serial_fields(self.command(CMD_GET_SERIAL, (2, 0, 0, 0))))
+
+    def profile_index(self):
+        data = self.command(CMD_GET_PROFILE_INDEX)
+        return data[0] if data else -1
+
+    def profile_count(self):
+        data = self.command(CMD_GET_PROFILE_COUNT)
+        return data[0] if data and 0 < data[0] <= 16 else 4
+
+    def set_profile(self, index):
+        self.command(CMD_ACTIVATE_PROFILE, (index, 0, 0, 0))
+        time.sleep(0.05)
+        self.command(CMD_RELOAD_PROFILE, (index, 0, 0, 0))
+
+    def paint(self, red, green, blue):
+        """Host lighting mode: every key shows one color until reset() or replug."""
+        color = ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | ((blue & 0xF8) >> 3)
+        payload = bytearray([0xD0, 0xDA, REPORT_RAW_COLORS]) + color.to_bytes(2, "little") * (RGB_ROWS * RGB_COLS)
+        payload = bytes(payload.ljust(256, b"\0"))
+        try:
+            self.command(CMD_COLOR_INIT, timeout=0.5)
+        except ProtocolError:
+            pass  # some firmware stays silent here; the color report still applies
+        output_len = self.info["lengths"].get("output") or 256
+        if output_len >= 256:
+            chunks = [payload]
+        else:
+            chunks = [payload[i:i + 64] for i in range(0, 256, 64)]
+        for chunk in chunks:
+            report = b"\0" + chunk
+            if os.write(self.fd, report) != len(report):
+                raise ProtocolError("short write while sending colors")
+
+    def reset_lighting(self):
+        self.command(CMD_RESET_ALL)
+
+
+def base_status():
+    return {
+        "schema": 1, "connected": False, "access": "absent", "device": "",
+        "model": "", "firmware": "", "serial": "", "profileIndex": -1,
+        "profileCount": 4, "error": "", "boards": 0,
+    }
+
+
+def open_board(status):
+    boards = discover()
+    status["boards"] = len(boards)
+    if not boards:
+        status["error"] = "No Wooting keyboard found."
+        return None
+    info = boards[0]
+    status["device"] = info["path"]
+    status["model"] = model_name(info["vid"], info["pid"])
+    if info["kind"] == "v3":
+        status["access"] = "unsupported"
+        status["error"] = "This keyboard uses a newer multi-report protocol that Hall Keys does not speak yet."
+        return None
+    if not os.access(info["path"], os.R_OK | os.W_OK):
+        status["access"] = "denied"
+        status["error"] = "No permission to open %s. Grant keyboard access from the panel." % info["path"]
+        return None
+    status["access"] = "ok"
+    try:
+        return Board(info)
+    except OSError as exc:
+        status["error"] = "Could not open %s: %s" % (info["path"], exc.strerror or exc)
+        return None
+
+
+def fill_status(board, status):
+    status["firmware"] = board.firmware()
+    status["serial"] = board.serial()
+    status["profileCount"] = board.profile_count()
+    status["profileIndex"] = board.profile_index()
+    status["connected"] = True
+
+
+def parse_color(text):
+    match = re.fullmatch(r"#?([0-9a-fA-F]{6})", text.strip())
+    if not match:
+        raise ValueError("color must look like #rrggbb")
+    value = int(match.group(1), 16)
+    return (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF
+
+
+def usage(code=2):
+    sys.stderr.write(__doc__ or "usage: hall-keys status|profile <n>|paint <#rrggbb>|reset|probe\n")
+    sys.exit(code)
+
+
+def main(argv):
+    if not argv:
+        usage()
+    action, args = argv[0], argv[1:]
+    status = base_status()
+    exit_code = 0
+    board = open_board(status)
+    try:
+        if action == "status":
+            if board:
+                fill_status(board, status)
+        elif action == "profile":
+            if len(args) != 1 or not args[0].isdigit():
+                usage()
+            if board:
+                count = board.profile_count()
+                wanted = int(args[0]) - 1
+                if not 0 <= wanted < count:
+                    raise ValueError("profile must be between 1 and %d" % count)
+                board.set_profile(wanted)
+                time.sleep(0.05)
+                fill_status(board, status)
+        elif action == "paint":
+            if len(args) != 1:
+                usage()
+            red, green, blue = parse_color(args[0])
+            if board:
+                board.paint(red, green, blue)
+                fill_status(board, status)
+                status["painted"] = "#%02x%02x%02x" % (red, green, blue)
+        elif action == "reset":
+            if board:
+                board.reset_lighting()
+                fill_status(board, status)
+        elif action == "probe":
+            if board:
+                dump = {}
+                for cmd, params in ((CMD_GET_VERSION, (0,)), (CMD_GET_SERIAL, (2,)), (CMD_GET_PROFILE_INDEX, (0,)),
+                                    (CMD_GET_PROFILE_COUNT, (0,)), (CMD_GET_DEVICE_CONFIG, (0,))):
+                    try:
+                        dump[str(cmd)] = board.command(cmd, params).hex(" ")
+                    except ProtocolError as exc:
+                        dump[str(cmd)] = "error: %s" % exc
+                status["probe"] = dump
+                status["descriptor"] = board.info["lengths"]
+                fill_status(board, status)
+        else:
+            usage()
+        if board is None:
+            exit_code = 1
+    except (ProtocolError, OSError, ValueError) as exc:
+        status["error"] = str(exc)
+        status["connected"] = False
+        exit_code = 1
+    finally:
+        if board:
+            board.close()
+    json.dump(status, sys.stdout, separators=(",", ":"))
+    sys.stdout.write("\n")
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
