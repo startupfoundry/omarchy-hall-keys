@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
@@ -98,16 +97,6 @@ Panel {
     function heroMeta() {
         if (connected) return firmware !== "" ? "Firmware " + firmware : ""
         return Model.accessHint(access)
-    }
-
-    // omarchy-shell hall-keys rename | toggle  (handy for a keybinding)
-    IpcHandler {
-        target: "hall-keys"
-        function toggle(): void { root.toggle() }
-        function rename(): void {
-            root.open()
-            Qt.callLater(function() { root.startRenaming() })
-        }
     }
 
     onOpenedChanged: {

@@ -55,13 +55,6 @@ BarWidget {
         chooseProfile(((keys.profileIndex + step) % n + n) % n)
     }
 
-    // Open the panel straight into rename mode. Reachable over IPC:
-    //   omarchy-shell shell call io.github.startupfoundry.hall-keys renameProfiles ""
-    function renameProfiles() {
-        open()
-        if (panelLoader.item) Qt.callLater(function() { panelLoader.item.startRenaming() })
-    }
-
     function closeForPopoutSwitch() {
         if (panelLoader.item) panelLoader.item.closeForPopoutSwitch()
     }
