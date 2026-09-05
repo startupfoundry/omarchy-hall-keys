@@ -30,6 +30,27 @@ Panel {
     readonly property string lastError: keys ? keys.lastError : ""
     readonly property bool granting: keys ? keys.granting : false
 
+    // Rename mode swaps the profile buttons for text fields. While it is on,
+    // the key catcher is blocked so typing reaches the fields.
+    property bool renaming: false
+
+    function startRenaming() {
+        if (!connected) return
+        renaming = true
+    }
+
+    function stopRenaming() {
+        renaming = false
+        Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    }
+
+    function commitName(index, text) {
+        if (!hostWidget || typeof hostWidget.updateSetting !== "function") return
+        var clean = Model.cleanText(text, "", 24)
+        if (clean === Model.profileName(root.widgetSettings, index)) return
+        hostWidget.updateSetting("profile" + (index + 1) + "Name", clean)
+    }
+
     function open() {
         root.controller.show()
         if (keys) keys.refresh()
@@ -64,6 +85,7 @@ Panel {
 
     onOpenedChanged: if (opened) {
         if (keys) keys.refresh()
+        renaming = false
         Qt.callLater(function() { keyCatcher.forceActiveFocus() })
     }
 
@@ -80,6 +102,7 @@ Panel {
         PanelKeyCatcher {
             id: keyCatcher
             anchors.fill: parent
+            blocked: root.renaming
             onCloseRequested: root.close()
             onTabRequested: function(direction) { root.switchPanel(direction) }
             onTextKey: function(text) {
@@ -125,15 +148,33 @@ Panel {
                     spacing: Style.space(8)
                     visible: root.connected
 
-                    PanelSectionHeader {
+                    Item {
                         width: parent.width
-                        text: "Profiles"
-                        foreground: root.foreground
-                        fontFamily: root.fontFamily
+                        height: renameButton.height
+
+                        PanelSectionHeader {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Profiles"
+                            foreground: root.foreground
+                            fontFamily: root.fontFamily
+                        }
+
+                        PanelActionButton {
+                            id: renameButton
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            iconText: root.renaming ? "󰄬" : "󰏫"
+                            tooltipText: root.renaming ? "Done renaming" : "Rename profiles"
+                            foreground: root.foreground
+                            fontFamily: root.fontFamily
+                            onClicked: root.renaming ? root.stopRenaming() : root.startRenaming()
+                        }
                     }
 
                     Grid {
                         id: profileGrid
+                        visible: !root.renaming
                         width: parent.width
                         columns: 2
                         columnSpacing: Style.space(8)
@@ -155,9 +196,55 @@ Panel {
                         }
                     }
 
+                    Loader {
+                        id: nameGridLoader
+                        width: parent.width
+                        active: root.renaming
+                        visible: active
+                        onLoaded: Qt.callLater(function() { if (item) item.focusFirst() })
+                        sourceComponent: Grid {
+                            id: nameGrid
+                            width: nameGridLoader.width
+                            columns: 2
+                            columnSpacing: Style.space(8)
+                            rowSpacing: Style.space(8)
+                            readonly property real cellWidth: (width - columnSpacing) / 2
+
+                            function focusFirst() {
+                                var first = nameRepeater.itemAt(0)
+                                if (first) { first.forceActiveFocus(); first.selectAll() }
+                            }
+
+                            Repeater {
+                                id: nameRepeater
+                                model: root.profileCount
+                                delegate: TextField {
+                                    required property int index
+                                    width: nameGrid.cellWidth
+                                    text: Model.profileName(root.widgetSettings, index)
+                                    placeholderText: "Profile " + (index + 1)
+                                    maximumLength: 24
+                                    foreground: root.foreground
+                                    onEditingFinished: root.commitName(index, text)
+                                    onAccepted: {
+                                        var next = nameRepeater.itemAt(index + 1)
+                                        if (next) { next.forceActiveFocus(); next.selectAll() }
+                                        else root.stopRenaming()
+                                    }
+                                    Keys.onEscapePressed: {
+                                        text = Model.profileName(root.widgetSettings, index)
+                                        root.stopRenaming()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Text {
                         width: parent.width
-                        text: "Press 1-4 or scroll the bar icon to switch. Name profiles in Setup › Plugins."
+                        text: root.renaming
+                            ? "Enter saves and moves on, Esc cancels. Empty means the default name."
+                            : "Press 1-4 or scroll the bar icon to switch. The pencil renames."
                         color: root.foreground
                         opacity: 0.6
                         font.family: root.fontFamily
@@ -182,9 +269,10 @@ Panel {
                     Toggle {
                         width: parent.width
                         label: "Wear the theme"
-                        description: root.themeColor !== ""
-                            ? "Every key lights up in " + root.themeColor + " and follows theme changes."
-                            : "Every key lights up in the theme's keyboard color."
+                        description: (root.themeColor !== ""
+                            ? "Every key in " + root.themeColor + ", following theme changes."
+                            : "Every key in the theme's keyboard color.")
+                            + " A profile switch shows its own lighting briefly."
                         checked: root.themeLighting
                         foreground: root.foreground
                         fontFamily: root.fontFamily
