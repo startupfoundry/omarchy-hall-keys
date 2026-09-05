@@ -32,6 +32,7 @@ function defaultStatus() {
     serial: "",
     profileIndex: -1,
     profileCount: 4,
+    protocol: "",
     error: ""
   }
 }
@@ -69,6 +70,8 @@ function parseStatus(raw) {
   s.model = cleanText(data.model, "", 64)
   s.firmware = cleanText(data.firmware, "", 32)
   s.serial = cleanText(data.serial, "", 48)
+  var protocol = String(data.protocol || "")
+  s.protocol = (protocol === "classic" || protocol === "multi-report") ? protocol : ""
   s.profileCount = clampInt(data.profileCount, 4, 1, 16)
   s.profileIndex = clampInt(data.profileIndex, -1, -1, s.profileCount - 1)
   s.error = cleanText(data.error, "", 200)

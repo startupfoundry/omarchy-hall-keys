@@ -19,9 +19,10 @@ HID to the keyboard, and Python 3 ships with Omarchy.
 ## Requirements
 
 - Omarchy Quattro.
-- A Wooting keyboard over USB. Tested on the 80HE. Boards that use Wooting's
-  256-byte configuration interface should work: One, Two, Two LE, Two HE, 60HE, 60HE V2,
-  80HE. Boards on the newer multi-report protocol show as unsupported for now.
+- A Wooting keyboard over USB. Both of Wooting's configuration protocols are supported:
+  the classic one (tested on an 80HE with firmware 2.10) and the newer multi-report one
+  (tested on the same 80HE after updating to firmware 2.14). Boards on the classic protocol
+  get a note in the panel suggesting a firmware check in Wootility.
 - Permission to open the keyboard's `/dev/hidraw` node (see below).
 
 ## Install
@@ -98,7 +99,8 @@ Run the helper directly to see exactly what the plugin sees:
 ```
 
 `"access":"denied"` means the udev rule is missing. `"access":"absent"` means no Wooting
-configuration interface was found on hidraw. If the shell shows nothing, check
+configuration interface was found on hidraw. `"protocol"` tells you which generation the
+firmware speaks; `probe` dumps the raw replies and the interface's report layout. If the shell shows nothing, check
 `qs log -p "$OMARCHY_PATH/shell" --tail 100` for QML errors.
 
 ## Uninstall

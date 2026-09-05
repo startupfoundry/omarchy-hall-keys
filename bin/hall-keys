@@ -11,10 +11,16 @@
 #   hall-keys reset             hand lighting back to the onboard profile
 #   hall-keys probe             dump raw replies to a few read-only commands
 #
-# Protocol (from WootingKb/wooting-rgb-sdk, MIT, and community notes on Wootility):
-#   command  = 8-byte HID feature report [0x00, 0xD0, 0xDA, cmd, p0, p1, p2, p3]
-#   reply    = one 256-byte input report   [0xD0, 0xDA, cmd, flags, len, data...]
-#   lighting = 256-byte output report      [0xD0, 0xDA, 11, 126 x RGB565 little-endian]
+# Protocol (from WootingKb/wooting-rgb-sdk, MIT, and community notes on Wootility).
+# Two generations exist, told apart by the configuration interface's usage page:
+#   classic (usage page 0x1337, e.g. 80HE firmware <= 2.10):
+#     command  = 8-byte feature report  [0x00, 0xD0, 0xDA, cmd, p0, p1, p2, p3]
+#     reply    = 256-byte input report  [0xD0, 0xDA, cmd, flags, len, data...]
+#     lighting = 256-byte output report [0xD0, 0xDA, 11, 126 x RGB565 little-endian]
+#   multi-report (usage page 0xFF55, e.g. 80HE firmware >= 2.14):
+#     command  = feature report id 1    [0x01, 0xD1, 0xDA, cmd, p0, p1, p2, p3]
+#     reply    = input report id 1..6   [id, 0xD1, 0xDA, cmd, flags, len_lo, len_hi, data...]
+#     lighting = smallest output report that fits [0xD1, 0xDA, 11, 126 x RGB565]
 
 import fcntl
 import glob
@@ -28,7 +34,7 @@ import time
 VENDOR_WOOTING = 0x31E3
 VENDOR_LEGACY = 0x03EB          # first-generation Wooting One / Two
 USAGE_PAGE_CFG = 0x1337         # configuration interface, 256-byte reports
-USAGE_PAGE_CFG_V3 = 0xFF55      # newer multi-report interface (not supported yet)
+USAGE_PAGE_CFG_V3 = 0xFF55      # newer multi-report interface
 
 CMD_GET_VERSION = 1
 CMD_GET_SERIAL = 3
@@ -79,10 +85,14 @@ def hidioc_sfeature(length):
 
 
 def parse_descriptor(raw):
-    """Return (usage pages, {input,output,feature: bytes}) from a HID report descriptor."""
+    """Return (usage pages, {input,output,feature: {report_id: bytes}}) from a HID report descriptor.
+
+    Report id None means the interface uses unnumbered reports.
+    """
     pages = set()
     count = size = 0
-    lengths = {"input": 0, "output": 0, "feature": 0}
+    report_id = None
+    reports = {"input": {}, "output": {}, "feature": {}}
     i = 0
     while i < len(raw):
         prefix = raw[i]
@@ -95,14 +105,16 @@ def parse_descriptor(raw):
         i += item_size
         if tag == 0x04:
             pages.add(value)
+        elif tag == 0x84:
+            report_id = value
         elif tag == 0x94:
             count = value
         elif tag == 0x74:
             size = value
         elif tag in (0x80, 0x90, 0xB0):
             key = {0x80: "input", 0x90: "output", 0xB0: "feature"}[tag]
-            lengths[key] = max(lengths[key], count * size // 8)
-    return pages, lengths
+            reports[key][report_id] = max(reports[key].get(report_id, 0), count * size // 8)
+    return pages, reports
 
 
 def hidraw_number(path):
@@ -134,7 +146,7 @@ def discover():
             continue
         try:
             with open(os.path.join(dev, "device", "report_descriptor"), "rb") as f:
-                pages, lengths = parse_descriptor(f.read())
+                pages, reports = parse_descriptor(f.read())
         except OSError:
             continue
         if USAGE_PAGE_CFG in pages:
@@ -145,7 +157,7 @@ def discover():
             continue
         found.append({
             "path": "/dev/" + os.path.basename(dev),
-            "vid": vid, "pid": pid, "kind": kind, "lengths": lengths,
+            "vid": vid, "pid": pid, "kind": kind, "reports": reports,
         })
     return found
 
@@ -205,7 +217,12 @@ class Board:
     def __init__(self, info):
         self.info = info
         self.path = info["path"]
-        self.legacy = info["vid"] == VENDOR_LEGACY
+        self.multi = info["kind"] == "v3"
+        self.legacy = info["vid"] == VENDOR_LEGACY and not self.multi
+        self.magic = 0xD1 if self.multi else 0xD0
+        self.command_id = 1 if self.multi else 0
+        # classic boards answer with one fixed-size report; multi-report boards
+        # pick whichever numbered report fits the reply
         self.response_size = 128 if self.legacy else 256
         self.fd = os.open(self.path, os.O_RDWR | os.O_NONBLOCK)
 
@@ -223,26 +240,35 @@ class Board:
             except BlockingIOError:
                 return
 
-    def command(self, cmd, params=(0, 0, 0, 0), timeout=1.0):
-        """Send one feature command and return the data bytes of its reply."""
-        self._drain()
-        packet = bytearray(8)
-        packet[1], packet[2], packet[3] = 0xD0, 0xDA, cmd
-        for i, value in enumerate(params[:4]):
-            packet[4 + i] = value & 0xFF
-        fcntl.ioctl(self.fd, hidioc_sfeature(len(packet)), packet)
-        deadline = time.monotonic() + timeout
-        buf = b""
+    def _read_reports(self, deadline):
         while time.monotonic() < deadline:
             ready, _, _ = select.select([self.fd], [], [], max(0.0, deadline - time.monotonic()))
             if not ready:
-                break
+                return
             try:
                 chunk = os.read(self.fd, 4096)
             except BlockingIOError:
                 continue
             if not chunk:
-                break
+                return
+            yield chunk
+
+    def command(self, cmd, params=(0, 0, 0, 0), timeout=1.0):
+        """Send one feature command and return the data bytes of its reply."""
+        self._drain()
+        packet = bytearray(8)
+        packet[0], packet[1], packet[2], packet[3] = self.command_id, self.magic, 0xDA, cmd
+        for i, value in enumerate(params[:4]):
+            packet[4 + i] = value & 0xFF
+        fcntl.ioctl(self.fd, hidioc_sfeature(len(packet)), packet)
+        deadline = time.monotonic() + timeout
+        if self.multi:
+            return self._read_multi_reply(cmd, deadline)
+        return self._read_classic_reply(cmd, deadline)
+
+    def _read_classic_reply(self, cmd, deadline):
+        buf = b""
+        for chunk in self._read_reports(deadline):
             buf += chunk
             while len(buf) >= self.response_size:
                 report, buf = buf[:self.response_size], buf[self.response_size:]
@@ -251,6 +277,39 @@ class Board:
                         return bytes(report[4:])
                     return bytes(report[5:5 + report[4]])
         raise ProtocolError("keyboard did not answer command %d" % cmd)
+
+    def _read_multi_reply(self, cmd, deadline):
+        # Each read() hands back one numbered report: [id, 0xD1, 0xDA, cmd, flags, len16, data...].
+        # Longer payloads continue in follow-up reports, so gather until the length is met.
+        body = b""
+        expected = None
+        for report in self._read_reports(deadline):
+            if len(report) < 2:
+                continue
+            payload = report[1:]
+            if expected is None:
+                if len(payload) < 6 or payload[0] != 0xD1 or payload[1] != 0xDA or payload[2] != cmd:
+                    continue
+                expected = 6 + int.from_bytes(payload[4:6], "little")
+            body += payload
+            if len(body) >= expected:
+                return bytes(body[6:expected])
+        raise ProtocolError("keyboard did not answer command %d" % cmd)
+
+    def _output_report(self, payload):
+        """Wrap a raw payload in the right output report for this interface."""
+        outputs = self.info["reports"].get("output") or {}
+        if self.multi:
+            fitting = sorted((size, rid) for rid, size in outputs.items() if rid is not None and size >= len(payload))
+            if not fitting:
+                raise ProtocolError("no output report large enough for lighting data")
+            size, rid = fitting[0]
+            return bytes([rid]) + bytes(payload.ljust(size, b"\0"))
+        size = outputs.get(None) or 256
+        report = bytes(payload.ljust(256, b"\0"))
+        if size >= 256:
+            return [b"\0" + report]
+        return [b"\0" + report[i:i + 64] for i in range(0, 256, 64)]
 
     def firmware(self):
         data = self.command(CMD_GET_VERSION)
@@ -275,19 +334,15 @@ class Board:
     def paint(self, red, green, blue):
         """Host lighting mode: every key shows one color until reset() or replug."""
         color = ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | ((blue & 0xF8) >> 3)
-        payload = bytearray([0xD0, 0xDA, REPORT_RAW_COLORS]) + color.to_bytes(2, "little") * (RGB_ROWS * RGB_COLS)
-        payload = bytes(payload.ljust(256, b"\0"))
+        payload = bytearray([self.magic, 0xDA, REPORT_RAW_COLORS]) + color.to_bytes(2, "little") * (RGB_ROWS * RGB_COLS)
         try:
             self.command(CMD_COLOR_INIT, timeout=0.5)
         except ProtocolError:
             pass  # some firmware stays silent here; the color report still applies
-        output_len = self.info["lengths"].get("output") or 256
-        if output_len >= 256:
-            chunks = [payload]
-        else:
-            chunks = [payload[i:i + 64] for i in range(0, 256, 64)]
-        for chunk in chunks:
-            report = b"\0" + chunk
+        reports = self._output_report(payload)
+        if isinstance(reports, bytes):
+            reports = [reports]
+        for report in reports:
             if os.write(self.fd, report) != len(report):
                 raise ProtocolError("short write while sending colors")
 
@@ -312,10 +367,7 @@ def open_board(status):
     info = boards[0]
     status["device"] = info["path"]
     status["model"] = model_name(info["vid"], info["pid"])
-    if info["kind"] == "v3":
-        status["access"] = "unsupported"
-        status["error"] = "This keyboard uses a newer multi-report protocol that Hall Keys does not speak yet."
-        return None
+    status["protocol"] = "multi-report" if info["kind"] == "v3" else "classic"
     if not os.access(info["path"], os.R_OK | os.W_OK):
         status["access"] = "denied"
         status["error"] = "No permission to open %s. Grant keyboard access from the panel." % info["path"]
@@ -393,7 +445,7 @@ def main(argv):
                     except ProtocolError as exc:
                         dump[str(cmd)] = "error: %s" % exc
                 status["probe"] = dump
-                status["descriptor"] = board.info["lengths"]
+                status["descriptor"] = {k: {str(rid): n for rid, n in v.items()} for k, v in board.info["reports"].items()}
                 fill_status(board, status)
         else:
             usage()

@@ -22,6 +22,7 @@ Panel {
     readonly property string access: keys ? keys.access : "absent"
     readonly property string model: keys ? keys.model : ""
     readonly property string firmware: keys ? keys.firmware : ""
+    readonly property string protocol: keys ? keys.protocol : ""
     readonly property int profileIndex: keys ? keys.profileIndex : -1
     readonly property int profileCount: keys ? keys.profileCount : 4
     readonly property string themeColor: keys ? keys.themeColor : ""
@@ -128,6 +129,18 @@ Panel {
                             font.pixelSize: Style.font.display
                         }
                     }
+                }
+
+                // Boards still on the classic protocol: point at Wootility for firmware.
+                Text {
+                    width: parent.width
+                    visible: root.connected && root.protocol === "classic"
+                    text: "This firmware speaks Wooting's classic protocol. Hall Keys works with it, but newer firmware gets the most testing. Open Wootility below to check for an update."
+                    color: root.foreground
+                    opacity: 0.7
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
                 }
 
                 // Profiles

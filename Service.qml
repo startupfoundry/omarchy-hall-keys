@@ -16,6 +16,7 @@ Item {
     property string devicePath: ""
     property string model: ""
     property string firmware: ""
+    property string protocol: ""      // "classic" or "multi-report"
     property string serial: ""
     property int profileIndex: -1
     property int profileCount: 4
@@ -108,6 +109,7 @@ Item {
         devicePath = s.device
         model = s.model
         firmware = s.firmware
+        protocol = s.protocol
         serial = s.serial
         profileCount = s.profileCount
         profileIndex = s.profileIndex
