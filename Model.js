@@ -4,11 +4,19 @@
 var UDEV_RULE_PATH = "/etc/udev/rules.d/70-wooting-hidraw-uaccess.rules"
 var UDEV_RULE_LINES = [
   "# Installed by the Hall Keys Omarchy plugin.",
-  "# Lets the active logged-in user configure Wooting keyboards over hidraw",
-  "# (same mechanism systemd uses for other seat devices).",
+  "# Lets the active logged-in user configure Wooting keyboards over hidraw and USB",
+  "# (same mechanism systemd uses for other seat devices). Matches the device list",
+  "# in Wooting's own Linux udev guide, so Wootility firmware updates work too.",
+  "# Current Wooting boards (Two HE, 60HE, 80HE, UwU, ...)",
   "SUBSYSTEM==\"hidraw\", ATTRS{idVendor}==\"31e3\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\"",
+  "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"31e3\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\"",
+  "# Wooting One and Two (first generation) and their firmware update mode",
   "SUBSYSTEM==\"hidraw\", ATTRS{idVendor}==\"03eb\", ATTRS{idProduct}==\"ff01\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\"",
-  "SUBSYSTEM==\"hidraw\", ATTRS{idVendor}==\"03eb\", ATTRS{idProduct}==\"ff02\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\""
+  "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"03eb\", ATTRS{idProduct}==\"ff01\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\"",
+  "SUBSYSTEM==\"hidraw\", ATTRS{idVendor}==\"03eb\", ATTRS{idProduct}==\"2402\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\"",
+  "SUBSYSTEM==\"hidraw\", ATTRS{idVendor}==\"03eb\", ATTRS{idProduct}==\"ff02\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\"",
+  "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"03eb\", ATTRS{idProduct}==\"ff02\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\"",
+  "SUBSYSTEM==\"hidraw\", ATTRS{idVendor}==\"03eb\", ATTRS{idProduct}==\"2403\", MODE:=\"0660\", GROUP=\"input\", TAG+=\"uaccess\""
 ]
 
 var KEYBOARD_GLYPH = "󰌌"   // nf-md-keyboard (U+F030C)
@@ -148,6 +156,6 @@ function pathFromUrl(url) {
 function grantAccessCommand() {
   var rule = UDEV_RULE_LINES.join("\n")
   var script = "printf '%s\\n' '" + rule + "' > " + UDEV_RULE_PATH
-    + " && udevadm control --reload && udevadm trigger --subsystem-match=hidraw"
+    + " && udevadm control --reload && udevadm trigger --subsystem-match=hidraw --subsystem-match=usb"
   return ["pkexec", "sh", "-c", script]
 }

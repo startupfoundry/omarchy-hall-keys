@@ -361,7 +361,7 @@ Panel {
 
                     Button {
                         text: "Open Wootility"
-                        tooltipText: "Full configuration in the browser (wootility.io)"
+                        tooltipText: "Opens wootility.io as an app window. First time: continue past its Linux setup page (already done here), then Find Devices and pick the keyboard."
                         foreground: root.foreground
                         fontFamily: root.fontFamily
                         bordered: true

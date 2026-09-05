@@ -38,8 +38,8 @@ The widget appears in the bar's right section. Move it with
 Linux keeps raw HID access to keyboards private to root. The first time you open the panel
 it will say **Keyboard access needed**. Click **Grant keyboard access**: it asks for your
 password once through polkit and installs one udev rule,
-`/etc/udev/rules.d/70-wooting-hidraw-uaccess.rules`, which is the same "Generic Wootings"
-line from Wooting's own Linux instructions:
+`/etc/udev/rules.d/70-wooting-hidraw-uaccess.rules`, with the same device list as Wooting's
+own Linux udev guide. The line that matters for current boards is:
 
 ```
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="31e3", MODE:="0660", GROUP="input", TAG+="uaccess"
@@ -69,9 +69,14 @@ Open Setup › Plugins › Hall Keys in the Omarchy menu, or edit the widget ent
 
 Actuation points, rapid trigger, remaps, and per-key lighting stay in Wootility, which is a
 web app that needs WebHID. **Open Wootility** launches it through `omarchy-launch-webapp`,
-so it gets its own app-style window in your default Chromium-based browser and finds the
-keyboard immediately thanks to the udev rule above. Embedding it inside the panel is not
-possible: Qt's web engine has no WebHID support.
+so it gets its own app-style window in your default Chromium-based browser. Embedding it
+inside the panel is not possible: Qt's web engine has no WebHID support.
+
+**First launch.** Wootility shows every Linux user its "Allow Linux to detect your device"
+page. A web page cannot see that the udev rule is already installed, so just scroll down and
+continue. Then click **Find Devices**, pick the keyboard in the browser's device chooser, and
+press **Connect**. The browser remembers that choice, so later launches go straight to the
+keyboard until the next Wootility update asks again.
 
 ## Theme lighting
 
